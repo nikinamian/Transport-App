@@ -1,100 +1,98 @@
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { GOOGLE_MAPS_API_KEY, UBER_API_KEY } from '@env';
+import axios from 'axios';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
 
 export default function App() {
-  // We'll eventually replace these with API selectors
-  const [mpg, setMpg] = useState('25');
-  const [gasPrice, setGasPrice] = useState('4.50');
-  const [distance, setDistance] = useState('10');
-  const [totalCost, setTotalCost] = useState<string | null>(null);
+  const [mpg, setMpg] = useState<number | null>(null);
+  const [gasCost, setGasCost] = useState<string | null>(null);
+  const [uberEstimate, setUberEstimate] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const calculateCost = () => {
-    const cost = (parseFloat(distance) / parseFloat(mpg)) * parseFloat(gasPrice);
-    setTotalCost(cost.toFixed(2));
+  // automatically fetch honda civic mpg on load
+  useEffect(() => {
+    const fetchMpg = async () => {
+      try {
+        const res = await axios.get('https://www.fueleconomy.gov/feg/ws/rest/vehicle/47513', {
+          headers: { 'Accept': 'application/json' }
+        });
+        setMpg(res.data.comb08);
+      } catch (e) {
+        setMpg(25); // fallback
+      }
+    };
+    fetchMpg();
+  }, []);
+
+  const handleTrip = async (data: any, details: any) => {
+    setLoading(true);
+    try {
+      // 1. get distance from google
+      const distUrl = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=Santa+Monica+College&destinations=place_id:${data.place_id}&key=${GOOGLE_MAPS_API_KEY}`;
+      const distRes = await axios.get(distUrl);
+      const miles = distRes.data.rows[0].elements[0].distance.value * 0.000621371;
+
+      // 2. gas math
+      if (mpg) setGasCost(((miles / mpg) * 4.85).toFixed(2));
+
+      // 3. uber price
+      const dest = details.geometry.location;
+      const uberUrl = `https://api.uber.com/v1.2/estimates/price?start_latitude=34.0194&start_longitude=-118.4697&end_latitude=${dest.lat}&end_longitude=${dest.lng}`;
+      const uberRes = await axios.get(uberUrl, { headers: { 'Authorization': `Token ${UBER_API_KEY}` } });
+      setUberEstimate(uberRes.data.prices[0].estimate);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Waywise Breakdown</Text>
-      </View>
+    <View style={styles.container}>
+      <Text style={styles.title}>waywise</Text>
       
-      <View style={styles.card}>
-        <Text style={styles.sectionHeader}>Your Vehicle</Text>
-        <Text style={styles.description}>We'll pull your MPG automatically soon.</Text>
-        
-        <Text style={styles.label}>Car MPG:</Text>
-        <TextInput style={styles.input} keyboardType="numeric" onChangeText={setMpg} value={mpg} />
+      <View style={styles.carCard}>
+        <Text style={styles.label}>active vehicle: 2024 honda civic</Text>
+        <Text style={styles.mpg}>{mpg ? `${mpg} mpg` : 'loading...'}</Text>
+      </View>
 
-        <View style={styles.divider} />
+      <GooglePlacesAutocomplete
+        placeholder='search destination'
+        onPress={handleTrip}
+        query={{ key: GOOGLE_MAPS_API_KEY, language: 'en' }}
+        fetchDetails={true}
+        styles={{ container: { flex: 0, marginBottom: 20 }, textInput: styles.input }}
+      />
 
-        <Text style={styles.sectionHeader}>Trip Details</Text>
-        <Text style={styles.label}>Current Gas Price ($):</Text>
-        <TextInput style={styles.input} keyboardType="numeric" onChangeText={setGasPrice} value={gasPrice} />
+      {loading && <ActivityIndicator color="#01579B" />}
 
-        <Text style={styles.label}>Destination Distance (miles):</Text>
-        <TextInput style={styles.input} keyboardType="numeric" onChangeText={setDistance} value={distance} />
-
-        <TouchableOpacity style={styles.button} onPress={calculateCost}>
-          <Text style={styles.buttonText}>Compare Options</Text>
-        </TouchableOpacity>
-
-        {totalCost && (
-          <View style={styles.resultContainer}>
-            <Text style={styles.resultLabel}>Driving Cost</Text>
-            <Text style={styles.resultValue}>${totalCost}</Text>
+      <ScrollView>
+        {gasCost && (
+          <View style={styles.resCard}>
+            <Text style={styles.resLabel}>gas cost</Text>
+            <Text style={styles.resVal}>${gasCost}</Text>
           </View>
         )}
-      </View>
-    </ScrollView>
+        {uberEstimate && (
+          <View style={[styles.resCard, { borderLeftColor: '#000' }]}>
+            <Text style={styles.resLabel}>uberx</Text>
+            <Text style={styles.resVal}>{uberEstimate}</Text>
+          </View>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, backgroundColor: '#E3F2FD', alignItems: 'center', padding: 20 },
-  header: { marginTop: 60, marginBottom: 20 },
-  title: { fontSize: 32, fontWeight: '900', color: '#01579B' },
-  sectionHeader: { fontSize: 18, fontWeight: '700', color: '#0277BD', marginBottom: 5 },
-  description: { fontSize: 12, color: '#546E7A', marginBottom: 10 },
-  card: {
-    backgroundColor: '#fff',
-    width: '100%',
-    borderRadius: 25,
-    padding: 25,
-    shadowColor: '#ADD8E6', // Light Blue shadow
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 15,
-    elevation: 8,
-  },
-  label: { fontSize: 14, fontWeight: '600', color: '#455A64', marginTop: 15 },
-  input: { 
-    height: 50, 
-    backgroundColor: '#F1F8FB', 
-    borderRadius: 12, 
-    paddingHorizontal: 15, 
-    marginTop: 8,
-    fontSize: 16,
-    color: '#01579B'
-  },
-  divider: { height: 1, backgroundColor: '#E1F5FE', marginVertical: 20 },
-  button: { 
-    backgroundColor: '#81D4FA', // Beautiful Light Blue
-    padding: 20, 
-    borderRadius: 15, 
-    marginTop: 25, 
-    alignItems: 'center' 
-  },
-  buttonText: { color: '#01579B', fontSize: 18, fontWeight: 'bold' },
-  resultContainer: {
-    marginTop: 20,
-    padding: 20,
-    backgroundColor: '#E1F5FE',
-    borderRadius: 15,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#B3E5FC'
-  },
-  resultLabel: { fontSize: 14, color: '#0288D1', textTransform: 'uppercase', fontWeight: 'bold' },
-  resultValue: { fontSize: 36, color: '#01579B', fontWeight: '900' }
+  container: { flex: 1, backgroundColor: '#E3F2FD', padding: 20, paddingTop: 60 },
+  title: { fontSize: 32, fontWeight: '900', color: '#01579B', marginBottom: 20 },
+  carCard: { backgroundColor: '#fff', padding: 15, borderRadius: 12, marginBottom: 20 },
+  label: { fontSize: 12, color: '#546E7A', textTransform: 'lowercase' },
+  mpg: { fontSize: 20, fontWeight: 'bold', color: '#01579B' },
+  input: { height: 50, borderRadius: 10, paddingHorizontal: 15, backgroundColor: '#fff' },
+  resCard: { backgroundColor: '#fff', padding: 20, borderRadius: 15, marginBottom: 15, borderLeftWidth: 6, borderLeftColor: '#0288D1' },
+  resLabel: { fontSize: 13, color: '#78909C' },
+  resVal: { fontSize: 28, fontWeight: 'bold', color: '#01579B' }
 });
