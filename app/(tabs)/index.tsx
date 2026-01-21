@@ -1,98 +1,100 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+export default function App() {
+  // We'll eventually replace these with API selectors
+  const [mpg, setMpg] = useState('25');
+  const [gasPrice, setGasPrice] = useState('4.50');
+  const [distance, setDistance] = useState('10');
+  const [totalCost, setTotalCost] = useState<string | null>(null);
 
-export default function HomeScreen() {
+  const calculateCost = () => {
+    const cost = (parseFloat(distance) / parseFloat(mpg)) * parseFloat(gasPrice);
+    setTotalCost(cost.toFixed(2));
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <ScrollView contentContainerStyle={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Waywise Breakdown</Text>
+      </View>
+      
+      <View style={styles.card}>
+        <Text style={styles.sectionHeader}>Your Vehicle</Text>
+        <Text style={styles.description}>We'll pull your MPG automatically soon.</Text>
+        
+        <Text style={styles.label}>Car MPG:</Text>
+        <TextInput style={styles.input} keyboardType="numeric" onChangeText={setMpg} value={mpg} />
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+        <View style={styles.divider} />
+
+        <Text style={styles.sectionHeader}>Trip Details</Text>
+        <Text style={styles.label}>Current Gas Price ($):</Text>
+        <TextInput style={styles.input} keyboardType="numeric" onChangeText={setGasPrice} value={gasPrice} />
+
+        <Text style={styles.label}>Destination Distance (miles):</Text>
+        <TextInput style={styles.input} keyboardType="numeric" onChangeText={setDistance} value={distance} />
+
+        <TouchableOpacity style={styles.button} onPress={calculateCost}>
+          <Text style={styles.buttonText}>Compare Options</Text>
+        </TouchableOpacity>
+
+        {totalCost && (
+          <View style={styles.resultContainer}>
+            <Text style={styles.resultLabel}>Driving Cost</Text>
+            <Text style={styles.resultValue}>${totalCost}</Text>
+          </View>
+        )}
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  container: { flexGrow: 1, backgroundColor: '#E3F2FD', alignItems: 'center', padding: 20 },
+  header: { marginTop: 60, marginBottom: 20 },
+  title: { fontSize: 32, fontWeight: '900', color: '#01579B' },
+  sectionHeader: { fontSize: 18, fontWeight: '700', color: '#0277BD', marginBottom: 5 },
+  description: { fontSize: 12, color: '#546E7A', marginBottom: 10 },
+  card: {
+    backgroundColor: '#fff',
+    width: '100%',
+    borderRadius: 25,
+    padding: 25,
+    shadowColor: '#ADD8E6', // Light Blue shadow
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  label: { fontSize: 14, fontWeight: '600', color: '#455A64', marginTop: 15 },
+  input: { 
+    height: 50, 
+    backgroundColor: '#F1F8FB', 
+    borderRadius: 12, 
+    paddingHorizontal: 15, 
+    marginTop: 8,
+    fontSize: 16,
+    color: '#01579B'
+  },
+  divider: { height: 1, backgroundColor: '#E1F5FE', marginVertical: 20 },
+  button: { 
+    backgroundColor: '#81D4FA', // Beautiful Light Blue
+    padding: 20, 
+    borderRadius: 15, 
+    marginTop: 25, 
+    alignItems: 'center' 
+  },
+  buttonText: { color: '#01579B', fontSize: 18, fontWeight: 'bold' },
+  resultContainer: {
+    marginTop: 20,
+    padding: 20,
+    backgroundColor: '#E1F5FE',
+    borderRadius: 15,
     alignItems: 'center',
-    gap: 8,
+    borderWidth: 2,
+    borderColor: '#B3E5FC'
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
+  resultLabel: { fontSize: 14, color: '#0288D1', textTransform: 'uppercase', fontWeight: 'bold' },
+  resultValue: { fontSize: 36, color: '#01579B', fontWeight: '900' }
 });
