@@ -1,5 +1,4 @@
-import axios from 'axios';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -9,54 +8,50 @@ import {
   View,
 } from 'react-native';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
+import axios from 'axios';
+
+// Import your new modular logic
+import { fetchCurrentGasPrice } from '../../services/gas-service';
+import { calculateDrivingTotal, estimateUberCost } from '../../utils/calculations';
 
 const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY!;
-const UBER_API_KEY = process.env.EXPO_PUBLIC_UBER_API_KEY!;
-
-
 const PLACEHOLDER_COLOR = '#666'; 
 const INPUT_COLOR = '#000';
 
 export default function HomeScreen() {
+  // Car State
   const [carYear, setCarYear] = useState('');
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
   const [mpg, setMpg] = useState<number | null>(null);
 
+  // Trip State
   const [origin, setOrigin] = useState<any>(null);
+  const [parkingCost, setParkingCost] = useState('15.00'); 
   const [gasCost, setGasCost] = useState<string | null>(null);
   const [uberEstimate, setUberEstimate] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+  // This still lives here as it's a simple fetch triggered by UI input
+  const handleFetchMpg = async () => {
     if (!carYear || !make || !model) return;
+    try {
+      const res = await axios.get(
+        `https://www.fueleconomy.gov/feg/ws/rest/vehicle/menu/options`,
+        { params: { year: carYear, make, model }, headers: { Accept: 'application/json' } }
+      );
+      const vehicleId = res.data.menuItem?.[0]?.value;
+      if (!vehicleId) return;
 
-    const fetchMpg = async () => {
-      try {
-        const res = await axios.get(
-          `https://www.fueleconomy.gov/feg/ws/rest/vehicle/menu/options`,
-          {
-            params: { year: carYear, make, model },
-            headers: { Accept: 'application/json' },
-          }
-        );
-
-        const vehicleId = res.data.menuItem?.[0]?.value;
-        if (!vehicleId) return;
-
-        const detailRes = await axios.get(
-          `https://www.fueleconomy.gov/feg/ws/rest/vehicle/${vehicleId}`,
-          { headers: { Accept: 'application/json' } }
-        );
-
-        setMpg(detailRes.data.comb08);
-      } catch {
-        setMpg(null);
-      }
-    };
-
-    fetchMpg();
-  }, [carYear, make, model]);
+      const detailRes = await axios.get(
+        `https://www.fueleconomy.gov/feg/ws/rest/vehicle/${vehicleId}`,
+        { headers: { Accept: 'application/json' } }
+      );
+      setMpg(detailRes.data.comb08);
+    } catch (e) {
+      setMpg(null);
+    }
+  };
 
   const calculateTrip = async (destinationData: any, destinationDetails: any) => {
     if (!origin || !mpg) {
@@ -66,6 +61,7 @@ export default function HomeScreen() {
 
     setLoading(true);
     try {
+      // 1. Get Distance from Google
       const distRes = await axios.get(
         `https://maps.googleapis.com/maps/api/distancematrix/json`,
         {
@@ -77,34 +73,26 @@ export default function HomeScreen() {
         }
       );
 
-      const meters =
-        distRes.data.rows[0].elements[0].distance.value;
-      const miles = meters * 0.000621371;
+      const miles = distRes.data.rows[0].elements[0].distance.value * 0.000621371;
 
-      const gasPrice = 4.85;
-      setGasCost(((miles / mpg) * gasPrice).toFixed(2));
+      // 2. Fetch Live Gas Price (from service)
+      const currentGasPrice = await fetchCurrentGasPrice();
 
-      const start = origin.geometry.location;
-      const end = destinationDetails.geometry.location;
-
-      const uberRes = await axios.get(
-        `https://api.uber.com/v1.2/estimates/price`,
-        {
-          params: {
-            start_latitude: start.lat,
-            start_longitude: start.lng,
-            end_latitude: end.lat,
-            end_longitude: end.lng,
-          },
-          headers: {
-            Authorization: `Token ${UBER_API_KEY}`,
-          },
-        }
+      // 3. Calculate Driving Cost (from util)
+      const drivingTotal = calculateDrivingTotal(
+        miles, 
+        mpg, 
+        currentGasPrice, 
+        parseFloat(parkingCost)
       );
+      setGasCost(drivingTotal);
 
-      setUberEstimate(uberRes.data.prices[0].estimate);
+      // 4. Estimate Uber Cost (from util)
+      const uber = estimateUberCost(miles);
+      setUberEstimate(`$${uber}`);
+
     } catch (e) {
-      console.error(e);
+      console.error("Calculation Error:", e);
     } finally {
       setLoading(false);
     }
@@ -115,84 +103,84 @@ export default function HomeScreen() {
       style={styles.container}
       contentContainerStyle={styles.scrollContent}
       keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
     >
-      <View style={{ height: 30 }} />
-
+      <View style={{ height: 60 }} />
       <Text style={styles.title}>WayWise</Text>
-
       <View style={{ height: 30 }} />
 
-      {/* CAR INFO */}
+      {/* CAR INFO CARD */}
       <View style={styles.card}>
-        <Text style={styles.label}>Car Year</Text>
         <TextInput
           style={styles.input}
           value={carYear}
           onChangeText={setCarYear}
-          keyboardType="numeric"
-          placeholder="e.g. 2021"
+          onBlur={handleFetchMpg}
+          placeholder="Year"
           placeholderTextColor={PLACEHOLDER_COLOR}
+          keyboardType="numeric"
         />
-
-        <Text style={styles.label}>Make</Text>
         <TextInput
           style={styles.input}
           value={make}
           onChangeText={setMake}
-          placeholder="e.g. Toyota"
+          onBlur={handleFetchMpg}
+          placeholder="Make"
           placeholderTextColor={PLACEHOLDER_COLOR}
         />
-
-        <Text style={styles.label}>Model</Text>
         <TextInput
           style={styles.input}
           value={model}
           onChangeText={setModel}
-          placeholder="e.g. Camry"
+          onBlur={handleFetchMpg}
+          placeholder="Model"
           placeholderTextColor={PLACEHOLDER_COLOR}
         />
-
-        {mpg && <Text style={styles.mpgText}>{mpg} MPG</Text>}
+        {mpg && <Text style={styles.mpgText}>Efficiency: {mpg} MPG</Text>}
       </View>
 
-      <View style={{ height: 60 }} />
+      <View style={{ height: 20 }} />
 
-      {/* FROM */}
+      {/* PARKING INPUT */}
+      <View style={styles.card}>
+        <Text style={styles.label}>Expected Parking Fee ($)</Text>
+        <TextInput
+          style={styles.input}
+          value={parkingCost}
+          onChangeText={setParkingCost}
+          keyboardType="numeric"
+          placeholder="0.00"
+        />
+      </View>
+
+      <View style={{ height: 40 }} />
+
+      {/* LOCATION SEARCH */}
       <GooglePlacesAutocomplete
-        placeholder="From"
+        placeholder="Start Location"
         fetchDetails
-        onPress={(data, details = null) =>
-          setOrigin({ ...data, ...details })
-        }
+        onPress={(data, details = null) => setOrigin({ ...data, ...details })}
         query={{ key: GOOGLE_MAPS_API_KEY, language: 'en' }}
         styles={placesStyles}
-        textInputProps={{
-          placeholderTextColor: PLACEHOLDER_COLOR,
-        }}
       />
 
       <View style={{ height: 16 }} />
 
-      {/* TO */}
       <GooglePlacesAutocomplete
-        placeholder="To"
+        placeholder="Destination"
         fetchDetails
         onPress={calculateTrip}
         query={{ key: GOOGLE_MAPS_API_KEY, language: 'en' }}
         styles={placesStyles}
-        textInputProps={{
-          placeholderTextColor: PLACEHOLDER_COLOR,
-        }}
       />
 
-      <View style={{ height: 50 }} />
+      <View style={{ height: 40 }} />
 
-      {loading && <ActivityIndicator size="large" />}
+      {loading && <ActivityIndicator size="large" color="#000" />}
 
+      {/* RESULTS COMPARISON */}
       {gasCost && (
         <View style={styles.resultCard}>
-          <Text style={styles.resultLabel}>Driving Cost</Text>
+          <Text style={styles.resultLabel}>Driving (Gas + Parking)</Text>
           <Text style={styles.resultValue}>${gasCost}</Text>
         </View>
       )}
@@ -204,85 +192,24 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* MASSIVE scroll buffer */}
-      <View style={{ height: 220 }} />
+      <View style={{ height: 100 }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#E3F2FD',
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-  },
-  title: {
-    fontSize: 42,
-    fontWeight: '900',
-    textAlign: 'center',
-    color: INPUT_COLOR,
-  },
-  card: {
-    backgroundColor: '#fff',
-    padding: 16,
-    borderRadius: 14,
-  },
-  label: {
-    fontSize: 14,
-    marginTop: 10,
-    marginBottom: 4,
-    color: INPUT_COLOR,
-  },
-  input: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#000',
-    borderRadius: 8,
-    padding: 10,
-    color: INPUT_COLOR,
-  },
-  mpgText: {
-    marginTop: 10,
-    fontWeight: 'bold',
-    color: INPUT_COLOR,
-  },
-  resultCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 14,
-    marginTop: 20,
-  },
-  resultLabel: {
-    fontSize: 14,
-    color: INPUT_COLOR,
-  },
-  resultValue: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: INPUT_COLOR,
-  },
+  container: { flex: 1, backgroundColor: '#E3F2FD' },
+  scrollContent: { paddingHorizontal: 20 },
+  title: { fontSize: 42, fontWeight: '900', textAlign: 'center', color: INPUT_COLOR },
+  card: { backgroundColor: '#fff', padding: 16, borderRadius: 14, gap: 10 },
+  label: { fontSize: 14, color: INPUT_COLOR, fontWeight: '600' },
+  input: { borderBottomWidth: 1, borderColor: '#ccc', padding: 8, color: INPUT_COLOR },
+  mpgText: { marginTop: 5, fontWeight: 'bold', color: '#2E7D32' },
+  resultCard: { backgroundColor: '#fff', padding: 20, borderRadius: 14, marginTop: 15, elevation: 2 },
+  resultLabel: { fontSize: 14, color: '#555' },
+  resultValue: { fontSize: 32, fontWeight: 'bold', color: INPUT_COLOR },
 });
 
 const placesStyles = {
-  container: {
-    flex: 0,
-  },
-  textInputContainer: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#000',
-    borderRadius: 8,
-  },
-  textInput: {
-    height: 50,
-    backgroundColor: '#fff',
-    color: INPUT_COLOR, // user input = black
-    fontSize: 16,
-    paddingHorizontal: 12,
-  },
-  listView: {
-    backgroundColor: '#fff',
-  },
+  textInput: { height: 50, borderRadius: 8, borderWidth: 1, borderColor: '#000', paddingHorizontal: 12 },
 };
